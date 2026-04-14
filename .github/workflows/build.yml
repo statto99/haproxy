@@ -14,28 +14,29 @@ jobs:
             echo 'deb http://archive.debian.org/debian stretch main contrib non-free' > /etc/apt/sources.list &&
             echo 'deb http://archive.debian.org/debian-security stretch/updates main' >> /etc/apt/sources.list &&
             apt-get update -o Acquire::Check-Valid-Until=false -q &&
-            apt-get install -y build-essential libssl-dev libpcre3-dev zlib1g-dev wget &&
+            apt-get install -y build-essential libssl-dev libpcre3-dev zlib1g-dev wget liblua5.3-dev &&
             cd /tmp &&
             wget -q https://www.haproxy.org/download/2.8/src/haproxy-2.8.11.tar.gz &&
             tar xzf haproxy-2.8.11.tar.gz &&
             cd haproxy-2.8.11 &&
-            make TARGET=linux-glibc USE_OPENSSL=1 USE_PCRE=1 USE_ZLIB=1 -j\$(nproc) &&
+            make TARGET=linux-glibc USE_OPENSSL=1 USE_PCRE=1 USE_ZLIB=1 USE_LUA=1 LUA_INC=/usr/include/lua5.3 LUA_LIB=/usr/lib/x86_64-linux-gnu -j\$(nproc) &&
             strip haproxy &&
             cp haproxy /output/haproxy
           "
 
-      - name: Verify glibc symbols
+      - name: Verify
         run: |
-          echo "=== glibc symbols required ==="
+          file haproxy
           objdump -T haproxy | grep GLIBC | sed 's/.*GLIBC_/GLIBC_/' | sort -u
 
       - name: Create Release and upload binary
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tar czf haproxy-2.8-debian9.tar.gz haproxy
-          gh release create v2.8-debian9 haproxy-2.8-debian9.tar.gz \
+          tar czf haproxy-2.8-debian9-lua.tar.gz haproxy
+          gh release delete v2.8-debian9 --yes --repo ${{ github.repository }} 2>/dev/null || true
+          gh release create v2.8-debian9 haproxy-2.8-debian9-lua.tar.gz \
             --repo ${{ github.repository }} \
-            --title "HAProxy 2.8 for Debian 9" \
-            --notes "HAProxy 2.8.11 built on Debian 9 stretch" \
+            --title "HAProxy 2.8 for Debian 9 with Lua" \
+            --notes "HAProxy 2.8.11 built on Debian 9 stretch with Lua 5.3" \
             --target ${{ github.sha }}
