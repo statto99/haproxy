@@ -1,0 +1,42 @@
+name: Build HAProxy for Debian 9
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container:
+      image: debian:stretch
+
+    steps:
+      - name: Install build deps
+        run: |
+          echo "deb http://archive.debian.org/debian stretch main contrib non-free" > /etc/apt/sources.list
+          echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list
+          apt-get update -o Acquire::Check-Valid-Until=false
+          apt-get install -y build-essential libssl-dev libpcre3-dev zlib1g-dev wget
+
+      - name: Download HAProxy source
+        run: |
+          wget https://www.haproxy.org/download/2.8/src/haproxy-2.8.11.tar.gz
+          tar xzf haproxy-2.8.11.tar.gz
+
+      - name: Build
+        run: |
+          cd haproxy-2.8.11
+          make TARGET=linux-glibc USE_OPENSSL=1 USE_PCRE=1 USE_ZLIB=1 -j$(nproc)
+          strip haproxy
+
+      - name: Package
+        run: |
+          mkdir -p haproxy-bin
+          cp haproxy-2.8.11/haproxy haproxy-bin/
+          haproxy-bin/haproxy -v
+          tar czf haproxy-2.8-debian9.tar.gz haproxy-bin/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: haproxy-2.8-debian9
+          path: haproxy-2.8-debian9.tar.gz
