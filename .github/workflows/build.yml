@@ -6,37 +6,36 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    container:
-      image: debian:stretch
 
     steps:
-      - name: Install build deps
+      - name: Build HAProxy inside Debian 9 container
         run: |
-          echo "deb http://archive.debian.org/debian stretch main contrib non-free" > /etc/apt/sources.list
-          echo "deb http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list
-          apt-get update -o Acquire::Check-Valid-Until=false
-          apt-get install -y build-essential libssl-dev libpcre3-dev zlib1g-dev wget
+          docker run --rm -v $PWD:/output debian:stretch bash -c "
+            echo 'deb http://archive.debian.org/debian stretch main contrib non-free' > /etc/apt/sources.list &&
+            echo 'deb http://archive.debian.org/debian-security stretch/updates main' >> /etc/apt/sources.list &&
+            apt-get update -o Acquire::Check-Valid-Until=false -q &&
+            apt-get install -y build-essential libssl-dev libpcre3-dev zlib1g-dev wget &&
+            cd /tmp &&
+            wget -q https://www.haproxy.org/download/2.8/src/haproxy-2.8.11.tar.gz &&
+            tar xzf haproxy-2.8.11.tar.gz &&
+            cd haproxy-2.8.11 &&
+            make TARGET=linux-glibc USE_OPENSSL=1 USE_PCRE=1 USE_ZLIB=1 -j\$(nproc) &&
+            strip haproxy &&
+            cp haproxy /output/haproxy
+          "
 
-      - name: Download HAProxy source
+      - name: Verify glibc symbols
         run: |
-          wget https://www.haproxy.org/download/2.8/src/haproxy-2.8.11.tar.gz
-          tar xzf haproxy-2.8.11.tar.gz
+          echo "=== glibc symbols required ==="
+          objdump -T haproxy | grep GLIBC | sed 's/.*GLIBC_/GLIBC_/' | sort -u
 
-      - name: Build
+      - name: Create Release and upload binary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd haproxy-2.8.11
-          make TARGET=linux-glibc USE_OPENSSL=1 USE_PCRE=1 USE_ZLIB=1 -j$(nproc)
-          strip haproxy
-
-      - name: Package
-        run: |
-          mkdir -p haproxy-bin
-          cp haproxy-2.8.11/haproxy haproxy-bin/
-          haproxy-bin/haproxy -v
-          tar czf haproxy-2.8-debian9.tar.gz haproxy-bin/
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: haproxy-2.8-debian9
-          path: haproxy-2.8-debian9.tar.gz
+          tar czf haproxy-2.8-debian9.tar.gz haproxy
+          gh release create v2.8-debian9 haproxy-2.8-debian9.tar.gz \
+            --repo ${{ github.repository }} \
+            --title "HAProxy 2.8 for Debian 9" \
+            --notes "HAProxy 2.8.11 built on Debian 9 stretch" \
+            --target ${{ github.sha }}
