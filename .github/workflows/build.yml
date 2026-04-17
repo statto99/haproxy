@@ -1,4 +1,4 @@
-name: Build HAProxy for Debian 9
+name: Build HAProxy 3.0 for Debian 9
 
 on:
   workflow_dispatch:
@@ -16,10 +16,12 @@ jobs:
             apt-get update -o Acquire::Check-Valid-Until=false -q &&
             apt-get install -y build-essential libssl-dev libpcre3-dev zlib1g-dev wget liblua5.3-dev &&
             cd /tmp &&
-            wget -q https://www.haproxy.org/download/2.8/src/haproxy-2.8.11.tar.gz &&
-            tar xzf haproxy-2.8.11.tar.gz &&
-            cd haproxy-2.8.11 &&
-            make TARGET=linux-glibc USE_OPENSSL=1 USE_PCRE=1 USE_ZLIB=1 USE_LUA=1 LUA_INC=/usr/include/lua5.3 LUA_LIB=/usr/lib/x86_64-linux-gnu -j\$(nproc) &&
+            wget -q https://www.haproxy.org/download/3.0/src/haproxy-3.0.5.tar.gz &&
+            tar xzf haproxy-3.0.5.tar.gz &&
+            cd haproxy-3.0.5 &&
+            # Added USE_GETADDRINFO=1 to improve DNS resolution handling
+            make TARGET=linux-glibc USE_OPENSSL=1 USE_PCRE=1 USE_ZLIB=1 USE_LUA=1 USE_GETADDRINFO=1 \
+                 LUA_INC=/usr/include/lua5.3 LUA_LIB=/usr/lib/x86_64-linux-gnu -j\$(nproc) &&
             strip haproxy &&
             cp haproxy /output/haproxy
           "
@@ -27,16 +29,17 @@ jobs:
       - name: Verify
         run: |
           file haproxy
+          # Check for GLIBC compatibility to ensure it still runs on your target VPS
           objdump -T haproxy | grep GLIBC | sed 's/.*GLIBC_/GLIBC_/' | sort -u
 
       - name: Create Release and upload binary
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          tar czf haproxy-2.8-debian9-lua.tar.gz haproxy
-          gh release delete v2.8-debian9 --yes --repo ${{ github.repository }} 2>/dev/null || true
-          gh release create v2.8-debian9 haproxy-2.8-debian9-lua.tar.gz \
+          tar czf haproxy-3.0-debian9-lua.tar.gz haproxy
+          gh release delete v3.0-debian9 --yes --repo ${{ github.repository }} 2>/dev/null || true
+          gh release create v3.0-debian9 haproxy-3.0-debian9-lua.tar.gz \
             --repo ${{ github.repository }} \
-            --title "HAProxy 2.8 for Debian 9 with Lua" \
-            --notes "HAProxy 2.8.11 built on Debian 9 stretch with Lua 5.3" \
+            --title "HAProxy 3.0 for Debian 9 with Lua" \
+            --notes "HAProxy 3.0.5 built on Debian 9 stretch with Lua 5.3" \
             --target ${{ github.sha }}
